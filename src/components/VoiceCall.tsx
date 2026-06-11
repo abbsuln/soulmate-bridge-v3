@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { collection, doc, getDoc, setDoc, updateDoc, onSnapshot, deleteDoc } from 'firebase/firestore';
+import { collection, doc, getDoc, getDocs, setDoc, updateDoc, onSnapshot, deleteDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { Phone, PhoneOff, Mic, MicOff, Loader2, AlertCircle } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
@@ -13,7 +13,7 @@ export interface VoiceCallHandle {
   startCall: () => Promise<void>;
 }
 
-const ICE_SERVERS = {
+const ICE_SERVERS: RTCConfiguration = {
   iceServers: [
     { urls: 'stun:stun.l.google.com:19302' },
     { urls: 'stun:stun1.l.google.com:19302' },
@@ -37,6 +37,9 @@ const ICE_SERVERS = {
   iceCandidatePoolSize: 10,
 };
 
+const CALL_TIMEOUT_MS = 40000;
+const STALE_CALL_MS = 60000;
+
 type CallStatus = 'idle' | 'calling' | 'incoming' | 'connected' | 'ended';
 
 const VoiceCall = React.forwardRef<VoiceCallHandle, VoiceCallProps>(({ currentUser, otherUser }, ref) => {
@@ -52,15 +55,18 @@ const VoiceCall = React.forwardRef<VoiceCallHandle, VoiceCallProps>(({ currentUs
   const iceUnsubRef = useRef<(() => void) | null>(null);
   const remoteAudioRef = useRef<HTMLAudioElement>(null);
   const ringtoneRef = useRef<HTMLAudioElement>(null);
-  const callTimeoutRef = useRef<any>(null);
-  const durationTimerRef = useRef<any>(null);
+  const callTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const durationTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const listenerUnsubRef = useRef<(() => void) | null>(null);
+  const pendingCandidatesRef = useRef<RTCIceCandidateInit[]>([]);
+  const remoteDescSetRef = useRef(false);
 
   const setStatus = (s: CallStatus) => {
     callStatusRef.current = s;
     setCallStatus(s);
   };
 
+  // Auto-dismiss errors
   useEffect(() => {
     if (error) {
       const t = setTimeout(() => setError(null), 5000);
@@ -68,6 +74,7 @@ const VoiceCall = React.forwardRef<VoiceCallHandle, VoiceCallProps>(({ currentUs
     }
   }, [error]);
 
+  // Ringtone + duration timer
   useEffect(() => {
     if (callStatus === 'incoming') {
       ringtoneRef.current?.play().catch(() => {});
@@ -78,17 +85,30 @@ const VoiceCall = React.forwardRef<VoiceCallHandle, VoiceCallProps>(({ currentUs
     if (callStatus === 'connected') {
       setCallDuration(0);
       durationTimerRef.current = setInterval(() => setCallDuration(d => d + 1), 1000);
-    } else {
+    } else if (durationTimerRef.current) {
       clearInterval(durationTimerRef.current);
+      durationTimerRef.current = null;
     }
-    return () => clearInterval(durationTimerRef.current);
+    return () => {
+      if (durationTimerRef.current) clearInterval(durationTimerRef.current);
+    };
   }, [callStatus]);
 
-  const cleanupCall = useCallback(async (deleteFirestore = true) => {
-    clearTimeout(callTimeoutRef.current);
-    clearInterval(durationTimerRef.current);
+  // Delete ICE candidate subcollections for a given call document
+  const deleteSubcollection = useCallback(async (callId: string, subName: string) => {
+    try {
+      const subRef = collection(doc(db, 'calls', callId), subName);
+      const snap = await getDocs(subRef);
+      const deletes = snap.docs.map(d => deleteDoc(d.ref));
+      await Promise.all(deletes);
+    } catch {}
+  }, []);
 
+  const cleanupCall = useCallback(async (deleteFirestore = true) => {
+    if (callTimeoutRef.current) { clearTimeout(callTimeoutRef.current); callTimeoutRef.current = null; }
+    if (durationTimerRef.current) { clearInterval(durationTimerRef.current); durationTimerRef.current = null; }
     if (iceUnsubRef.current) { iceUnsubRef.current(); iceUnsubRef.current = null; }
+
     if (localStreamRef.current) {
       localStreamRef.current.getTracks().forEach(t => t.stop());
       localStreamRef.current = null;
@@ -97,14 +117,21 @@ const VoiceCall = React.forwardRef<VoiceCallHandle, VoiceCallProps>(({ currentUs
       peerConnectionRef.current.ontrack = null;
       peerConnectionRef.current.onicecandidate = null;
       peerConnectionRef.current.onconnectionstatechange = null;
+      peerConnectionRef.current.oniceconnectionstatechange = null;
       peerConnectionRef.current.close();
       peerConnectionRef.current = null;
     }
     if (remoteAudioRef.current) remoteAudioRef.current.srcObject = null;
 
+    pendingCandidatesRef.current = [];
+    remoteDescSetRef.current = false;
+
     if (deleteFirestore && callIdRef.current) {
+      const id = callIdRef.current;
       try {
-        const callRef = doc(db, 'calls', callIdRef.current);
+        await deleteSubcollection(id, 'callerCandidates');
+        await deleteSubcollection(id, 'answerCandidates');
+        const callRef = doc(db, 'calls', id);
         const snap = await getDoc(callRef);
         if (snap.exists()) await deleteDoc(callRef);
       } catch {}
@@ -114,9 +141,8 @@ const VoiceCall = React.forwardRef<VoiceCallHandle, VoiceCallProps>(({ currentUs
     setStatus('ended');
     setIsMuted(false);
     setCallDuration(0);
-
     setTimeout(() => setStatus('idle'), 2000);
-  }, []);
+  }, [deleteSubcollection]);
 
   const getMedia = useCallback(async (): Promise<MediaStream | null> => {
     try {
@@ -136,23 +162,55 @@ const VoiceCall = React.forwardRef<VoiceCallHandle, VoiceCallProps>(({ currentUs
     }
   }, [cleanupCall]);
 
+  // Flush any ICE candidates that arrived before remote description was set
+  const flushPendingCandidates = useCallback(async () => {
+    const pc = peerConnectionRef.current;
+    if (!pc) return;
+    const pending = pendingCandidatesRef.current;
+    pendingCandidatesRef.current = [];
+    for (const candidate of pending) {
+      try {
+        await pc.addIceCandidate(new RTCIceCandidate(candidate));
+      } catch {}
+    }
+  }, []);
+
   const createPC = useCallback((stream: MediaStream, id: string, role: 'caller' | 'answerer') => {
     const pc = new RTCPeerConnection(ICE_SERVERS);
     peerConnectionRef.current = pc;
+    remoteDescSetRef.current = false;
+    pendingCandidatesRef.current = [];
 
     stream.getTracks().forEach(track => pc.addTrack(track, stream));
 
     pc.ontrack = (e) => {
-      if (remoteAudioRef.current) remoteAudioRef.current.srcObject = e.streams[0];
+      if (remoteAudioRef.current && e.streams[0]) {
+        remoteAudioRef.current.srcObject = e.streams[0];
+      }
     };
 
     pc.onconnectionstatechange = () => {
       const state = pc.connectionState;
       if (state === 'connected') {
+        if (callTimeoutRef.current) { clearTimeout(callTimeoutRef.current); callTimeoutRef.current = null; }
         setStatus('connected');
-      } else if (state === 'failed' || state === 'disconnected') {
-        setError('انقطع الاتصال — يرجى التحقق من الإنترنت.');
+      } else if (state === 'failed') {
+        setError('فشل الاتصال — يرجى التحقق من الإنترنت والمحاولة مرة أخرى.');
         cleanupCall(true);
+      } else if (state === 'disconnected') {
+        // Brief disconnection is normal; wait before cleaning up
+        callTimeoutRef.current = setTimeout(() => {
+          if (peerConnectionRef.current?.connectionState === 'disconnected') {
+            setError('انقطع الاتصال.');
+            cleanupCall(true);
+          }
+        }, 5000);
+      }
+    };
+
+    pc.oniceconnectionstatechange = () => {
+      if (pc.iceConnectionState === 'failed') {
+        pc.restartIce();
       }
     };
 
@@ -167,12 +225,16 @@ const VoiceCall = React.forwardRef<VoiceCallHandle, VoiceCallProps>(({ currentUs
       } catch {}
     };
 
+    // Listen for remote ICE candidates; queue if remote description not yet set
     const unsub = onSnapshot(collection(doc(db, 'calls', id), remoteCol), (snap) => {
       snap.docChanges().forEach(async (change) => {
         if (change.type === 'added') {
-          try {
-            await pc.addIceCandidate(new RTCIceCandidate(change.doc.data()));
-          } catch {}
+          const candidateData = change.doc.data() as RTCIceCandidateInit;
+          if (remoteDescSetRef.current) {
+            try { await pc.addIceCandidate(new RTCIceCandidate(candidateData)); } catch {}
+          } else {
+            pendingCandidatesRef.current.push(candidateData);
+          }
         }
       });
     });
@@ -181,6 +243,7 @@ const VoiceCall = React.forwardRef<VoiceCallHandle, VoiceCallProps>(({ currentUs
     return pc;
   }, [cleanupCall]);
 
+  // Listen for incoming calls and answer signals
   useEffect(() => {
     const unsub = onSnapshot(collection(db, 'calls'), (snapshot) => {
       snapshot.docChanges().forEach(async (change) => {
@@ -188,6 +251,7 @@ const VoiceCall = React.forwardRef<VoiceCallHandle, VoiceCallProps>(({ currentUs
         const id = change.doc.id;
         const status = callStatusRef.current;
 
+        // Call document deleted — end the call
         if (change.type === 'removed') {
           if (callIdRef.current === id && status !== 'idle' && status !== 'ended') {
             await cleanupCall(false);
@@ -195,23 +259,34 @@ const VoiceCall = React.forwardRef<VoiceCallHandle, VoiceCallProps>(({ currentUs
           return;
         }
 
+        // Call marked as ended
         if (data.status === 'ended' && callIdRef.current === id && status !== 'idle' && status !== 'ended') {
           await cleanupCall(false);
           return;
         }
 
-        if (data.target === currentUser && data.type === 'offer' && status === 'idle') {
+        // Incoming call: someone is calling us
+        if (data.target === currentUser && data.type === 'offer' && data.status === 'pending' && status === 'idle') {
+          // Skip stale calls (older than 60 seconds)
+          const callTime = data.createdAt?.toDate?.() || data.createdAt;
+          if (callTime && (Date.now() - new Date(callTime).getTime() > STALE_CALL_MS)) {
+            try { await deleteDoc(doc(db, 'calls', id)); } catch {}
+            return;
+          }
           callIdRef.current = id;
           setStatus('incoming');
           return;
         }
 
+        // We are the caller and the other side answered
         if (data.caller === currentUser && data.type === 'answer' && status === 'calling' && callIdRef.current === id) {
           const pc = peerConnectionRef.current;
-          if (pc && !pc.currentRemoteDescription) {
+          if (pc && !pc.currentRemoteDescription && data.sdp) {
             try {
               await pc.setRemoteDescription(new RTCSessionDescription(data.sdp));
-            } catch (e) {
+              remoteDescSetRef.current = true;
+              await flushPendingCandidates();
+            } catch {
               setError('فشل الاتصال — يرجى المحاولة مرة أخرى.');
               await cleanupCall(true);
             }
@@ -221,8 +296,9 @@ const VoiceCall = React.forwardRef<VoiceCallHandle, VoiceCallProps>(({ currentUs
     });
     listenerUnsubRef.current = unsub;
     return () => { unsub(); };
-  }, [currentUser, cleanupCall]);
+  }, [currentUser, cleanupCall, flushPendingCandidates]);
 
+  // Cleanup on unmount
   useEffect(() => {
     return () => {
       listenerUnsubRef.current?.();
@@ -241,26 +317,31 @@ const VoiceCall = React.forwardRef<VoiceCallHandle, VoiceCallProps>(({ currentUs
     const id = callRef.id;
     callIdRef.current = id;
 
-    const pc = createPC(stream, id, 'caller');
+    try {
+      const pc = createPC(stream, id, 'caller');
 
-    const offer = await pc.createOffer();
-    await pc.setLocalDescription(offer);
+      const offer = await pc.createOffer();
+      await pc.setLocalDescription(offer);
 
-    await setDoc(callRef, {
-      caller: currentUser,
-      target: otherUser,
-      type: 'offer',
-      sdp: offer.toJSON(),
-      status: 'pending',
-      timestamp: new Date(),
-    });
+      await setDoc(callRef, {
+        caller: currentUser,
+        target: otherUser,
+        type: 'offer',
+        sdp: { type: offer.type, sdp: offer.sdp },
+        status: 'pending',
+        createdAt: serverTimestamp(),
+      });
 
-    callTimeoutRef.current = setTimeout(() => {
-      if (callStatusRef.current === 'calling') {
-        setError('لا يوجد رد — تأكد أن الطرف الآخر متصل.');
-        cleanupCall(true);
-      }
-    }, 40000);
+      callTimeoutRef.current = setTimeout(() => {
+        if (callStatusRef.current === 'calling') {
+          setError('لا يوجد رد — تأكد أن الطرف الآخر متصل.');
+          cleanupCall(true);
+        }
+      }, CALL_TIMEOUT_MS);
+    } catch (err) {
+      setError('فشل بدء الاتصال — حاول مرة ثانية.');
+      await cleanupCall(true);
+    }
   }, [currentUser, otherUser, getMedia, createPC, cleanupCall]);
 
   React.useImperativeHandle(ref, () => ({ startCall }), [startCall]);
@@ -268,28 +349,38 @@ const VoiceCall = React.forwardRef<VoiceCallHandle, VoiceCallProps>(({ currentUs
   const answerCall = useCallback(async () => {
     const id = callIdRef.current;
     if (!id) return;
-    setStatus('connected');
 
     const stream = await getMedia();
     if (!stream) return;
 
-    const pc = createPC(stream, id, 'answerer');
+    try {
+      const pc = createPC(stream, id, 'answerer');
 
-    const callSnap = await getDoc(doc(db, 'calls', id));
-    if (!callSnap.exists()) { await cleanupCall(false); return; }
+      const callSnap = await getDoc(doc(db, 'calls', id));
+      if (!callSnap.exists()) { await cleanupCall(false); return; }
 
-    const offerSdp = callSnap.data()?.sdp;
-    await pc.setRemoteDescription(new RTCSessionDescription(offerSdp));
-    const answer = await pc.createAnswer();
-    await pc.setLocalDescription(answer);
+      const offerSdp = callSnap.data()?.sdp;
+      if (!offerSdp) { setError('بيانات الاتصال مفقودة.'); await cleanupCall(true); return; }
 
-    await updateDoc(doc(db, 'calls', id), {
-      type: 'answer',
-      sdp: answer.toJSON(),
-      status: 'connected',
-      caller: callSnap.data()?.caller,
-    });
-  }, [getMedia, createPC, cleanupCall]);
+      await pc.setRemoteDescription(new RTCSessionDescription(offerSdp));
+      remoteDescSetRef.current = true;
+      await flushPendingCandidates();
+
+      const answer = await pc.createAnswer();
+      await pc.setLocalDescription(answer);
+
+      await updateDoc(doc(db, 'calls', id), {
+        type: 'answer',
+        sdp: { type: answer.type, sdp: answer.sdp },
+        status: 'connected',
+        caller: callSnap.data()?.caller,
+      });
+      // Status will be set to 'connected' by onconnectionstatechange when WebRTC actually connects
+    } catch (err) {
+      setError('فشل الرد على الاتصال — حاول مرة ثانية.');
+      await cleanupCall(true);
+    }
+  }, [getMedia, createPC, cleanupCall, flushPendingCandidates]);
 
   const handleEndCall = useCallback(() => cleanupCall(true), [cleanupCall]);
 

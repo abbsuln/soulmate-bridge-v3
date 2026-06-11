@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { MapPin, Plus, ArrowLeft, Heart, X, Trash2 } from 'lucide-react';
+import { MapPin, Plus, X, Trash2 } from 'lucide-react';
+import PageHeader from './ui/PageHeader';
 import { db } from '../lib/firebase';
 import { collection, addDoc, onSnapshot, query, deleteDoc, doc, serverTimestamp } from 'firebase/firestore';
+import { mapDocs } from '../lib/firestore-helpers';
 
 export default function MemoryMap({ onBack }: { onBack: () => void }) {
   const [pins, setPins] = useState<any[]>([]);
@@ -12,7 +14,7 @@ export default function MemoryMap({ onBack }: { onBack: () => void }) {
   useEffect(() => {
     const q = query(collection(db, 'memoryPins'));
     return onSnapshot(q, (snapshot) => {
-      setPins(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+      setPins(mapDocs(snapshot));
     });
   }, []);
 
@@ -32,11 +34,7 @@ export default function MemoryMap({ onBack }: { onBack: () => void }) {
 
   return (
     <div className="fixed inset-0 z-[100] bg-[#111] flex flex-col font-sans">
-      <div className="p-4 border-b border-white/5 flex items-center justify-between bg-black/40">
-        <button onClick={onBack} className="p-2 bg-white/5 rounded-full"><ArrowLeft /></button>
-        <h2 className="text-lg font-bold">خريطة ذكرياتنا 📍</h2>
-        <button onClick={() => setShowAdd(true)} className="p-2 bg-rose-500 rounded-full"><Plus size={20} /></button>
-      </div>
+      <PageHeader title="خريطة ذكرياتنا 📍" onBack={onBack} rightElement={<button onClick={() => setShowAdd(true)} className="p-2 bg-rose-500 rounded-full"><Plus size={20} /></button>} />
 
       <div className="flex-1 relative">
         <iframe 

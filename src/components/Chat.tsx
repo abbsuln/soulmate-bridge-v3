@@ -2,10 +2,11 @@ import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { motion, AnimatePresence } from 'motion/react';
 import { Send, Heart, Image as ImageIcon, CheckCheck, Check, Smile, Reply, BellRing, Bell, Mic, Square, Trash2, FileText, Gamepad2, X, Sparkles, Gavel, Phone, MoreVertical, Paperclip, ChevronRight, ChevronDown, PenSquare, ArrowLeft, Video, PhoneOff, MicOff, Camera, Clock, Link2, Copy, Play, Pause, Moon, Star, TrendingUp, MapPin, Gift, Zap, Lock } from 'lucide-react';
 import { format } from 'date-fns';
-import { cn } from '../lib/utils';
-import { db, storage, OperationType, handleFirestoreError } from '../lib/firebase';
+import { cn, formatTime } from '../lib/utils';
+import { vibrate } from '../lib/haptics';
+import { requestMicrophone, buildAudioBlob, uploadAudio } from '../lib/audioRecorder';
+import { db, OperationType, handleFirestoreError } from '../lib/firebase';
 import { collection, query, orderBy, onSnapshot, addDoc, serverTimestamp, updateDoc, doc, setDoc, deleteDoc, where, limit } from 'firebase/firestore';
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { getToken, onMessage } from 'firebase/messaging';
 import { messaging } from '../lib/firebase';
 import DailySpark from './DailySpark';
@@ -102,12 +103,7 @@ const InlineAudioPlayer = ({ src }: { src: string }) => {
     }
   };
   
-  const formatTime = (time: number) => {
-    if (isNaN(time)) return "0:00";
-    const m = Math.floor(time / 60);
-    const s = Math.floor(time % 60);
-    return `${m}:${s < 10 ? '0' : ''}${s}`;
-  };
+
 
   return (
     <div className="flex items-center gap-3 w-[220px] mb-2 p-1">
@@ -165,7 +161,7 @@ const MessageBubble = React.memo(function MessageBubble({
     const now = Date.now();
     if (now - lastTap < 300) {
       handleReact(message.id, '❤️');
-      if (window.navigator.vibrate) window.navigator.vibrate(20);
+      vibrate(20);
     }
     setLastTap(now);
   };
@@ -181,7 +177,7 @@ const MessageBubble = React.memo(function MessageBubble({
         drag="x"
         dragConstraints={{ left: 0, right: 100 }}
         dragElastic={0.2}
-        onDragStart={() => isMine && window.navigator.vibrate?.(5)}
+        onDragStart={() => isMine && vibrate(5)}
         onDrag={(e, info) => {
            if (info.offset.x > 50) setSwipeX(info.offset.x);
         }}
@@ -528,7 +524,7 @@ function ChatInner({ currentUser, onLogout, otherUser }: { currentUser: 'abbas' 
   // Night mode effects
   useEffect(() => {
     if (nightMode.requestedBy && nightMode.requestedBy !== currentUser && !nightMode.isActive && !nightMode.exiting) {
-      if (window.navigator.vibrate) window.navigator.vibrate([200, 100, 200]);
+      vibrate([200, 100, 200]);
     }
     
     if (nightMode.exiting) {
@@ -551,7 +547,7 @@ function ChatInner({ currentUser, onLogout, otherUser }: { currentUser: 'abbas' 
       const pulse = snapshot.docs[0]?.data();
       if (pulse && pulse.senderId !== currentUser) {
         setIncomingPulse(pulse);
-        if (window.navigator.vibrate) window.navigator.vibrate([100, 50, 200]);
+        vibrate([100, 50, 200]);
         setTimeout(() => setIncomingPulse(null), 4000);
       }
     }, (error) => handleFirestoreError(error, OperationType.GET, 'pulses'));
@@ -619,7 +615,7 @@ function ChatInner({ currentUser, onLogout, otherUser }: { currentUser: 'abbas' 
 
   const acceptNightMode = async () => {
     playSound('send');
-    if (window.navigator.vibrate) window.navigator.vibrate([100, 50, 100]);
+    vibrate([100, 50, 100]);
     await updateDoc(doc(db, 'settings', 'nightMode'), {
       isActive: true,
       acceptedBy: currentUser,
@@ -693,7 +689,7 @@ function ChatInner({ currentUser, onLogout, otherUser }: { currentUser: 'abbas' 
              setInAppNotification({ id: change.doc.id, name: title, text: bodyTxt, isNudge: data.isNudge, isFatima: isFatima });
              playSound(data.isNudge ? soundSettings.nudge : soundSettings.message);
              if (data.isNudge) triggerNudge();
-             if (window.navigator.vibrate) window.navigator.vibrate(100);
+             vibrate(100);
              if (data.isSurprise) { /* Should trigger confetti visually */ }
              
              if (scrollContainerRef.current) {
@@ -892,7 +888,7 @@ function ChatInner({ currentUser, onLogout, otherUser }: { currentUser: 'abbas' 
     const text = messagesList[Math.floor(Math.random() * messagesList.length)];
     await addDoc(collection(db, 'messages'), { senderId: currentUser, text, isSurprise: true, timestamp: serverTimestamp(), status: 'sent' });
     triggerFloatingEmoji('🎉');
-    if (window.navigator.vibrate) window.navigator.vibrate([50, 100, 50]);
+    vibrate([50, 100, 50]);
   };
 
   const handleSendMessage = async (e?: React.FormEvent) => {
@@ -1463,7 +1459,7 @@ function ChatInner({ currentUser, onLogout, otherUser }: { currentUser: 'abbas' 
                         <button onClick={async () => {
                             setShowMoreMenu(false);
                             await addDoc(collection(db, 'pulses'), { senderId: currentUser, timestamp: serverTimestamp() });
-                            if (window.navigator.vibrate) window.navigator.vibrate(50);
+                            vibrate(50);
                         }} className="w-full px-4 py-2.5 flex items-center gap-3 hover:bg-white/5 transition-colors text-right border-t border-white/5" dir="rtl">
                           <Heart size={18} className="text-rose-500 fill-rose-500" />
                           <span className="text-sm font-medium">إرسال نبضة</span>
@@ -1738,7 +1734,7 @@ function ChatInner({ currentUser, onLogout, otherUser }: { currentUser: 'abbas' 
                    // Simplified: just update any active one
                    await addDoc(collection(db, 'emergencyAlerts'), { type: 'coming', senderId: currentUser, timestamp: serverTimestamp(), isActive: false });
                    // Also clear old alerts
-                   if (window.navigator.vibrate) window.navigator.vibrate(200);
+                   vibrate(200);
                    setShowNeedsYou(false);
                 }}
                 className="px-12 py-4 bg-white text-black rounded-full font-black text-xl"
@@ -2033,17 +2029,15 @@ function ChatInner({ currentUser, onLogout, otherUser }: { currentUser: 'abbas' 
                     if (newMessage.trim() || replyTo) return; // Ignore mic if sending text
                     e.preventDefault();
                     // Audio recording logic
-                    navigator.mediaDevices.getUserMedia({ audio: true }).then(stream => {
+                    requestMicrophone().then(stream => {
                       const mediaRecorder = new MediaRecorder(stream);
                       mediaRecorderRef.current = mediaRecorder;
                       audioChunksRef.current = [];
                       mediaRecorder.ondataavailable = (e) => audioChunksRef.current.push(e.data);
                       mediaRecorder.onstop = async () => {
                         try {
-                          const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
-                          const storageRef = ref(storage, `audio/${currentUser}_${Date.now()}.webm`);
-                          await uploadBytes(storageRef, audioBlob);
-                          const url = await getDownloadURL(storageRef);
+                          const audioBlob = buildAudioBlob(audioChunksRef.current);
+                          const url = await uploadAudio(audioBlob, `audio/${currentUser}_${Date.now()}.webm`);
                           await addDoc(collection(db, 'messages'), { senderId: currentUser, audioUrl: url, timestamp: serverTimestamp(), status: 'sent' });
                         } catch (error) {
                           console.error("Audio save failed:", error);
@@ -2053,7 +2047,7 @@ function ChatInner({ currentUser, onLogout, otherUser }: { currentUser: 'abbas' 
                       };
                       mediaRecorder.start();
                       setIsRecording(true);
-                      if (window.navigator.vibrate) window.navigator.vibrate(50);
+                      vibrate(50);
                     }).catch(() => { });
                   }}
                   onMouseUp={() => {

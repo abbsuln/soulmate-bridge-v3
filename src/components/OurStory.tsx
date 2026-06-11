@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
-import { Heart, MessageSquare, Calendar, Star, BarChart3, ArrowLeft } from 'lucide-react';
+import { Heart, MessageSquare, Calendar, Star, BarChart3 } from 'lucide-react';
+import PageHeader from './ui/PageHeader';
 import { db } from '../lib/firebase';
 import { collection, query, orderBy, getDocs, where } from 'firebase/firestore';
 import { format, differenceInDays } from 'date-fns';
@@ -57,11 +58,7 @@ export default function OurStory({ currentUser, partner, onBack }: { currentUser
       exit={{ opacity: 0, x: -50 }}
       className="fixed inset-0 z-[100] bg-black flex flex-col font-sans"
     >
-      <div className="p-4 border-b border-white/5 flex items-center justify-between">
-        <button onClick={onBack} className="p-2 bg-white/5 rounded-full"><ArrowLeft /></button>
-        <h2 className="text-xl font-bold">قصتنا المشتركة 🤍</h2>
-        <div className="w-10" />
-      </div>
+      <PageHeader title="قصتنا المشتركة 🤍" onBack={onBack} />
 
       <div className="flex-1 overflow-y-auto p-6 space-y-6">
         <div className="grid grid-cols-2 gap-4">

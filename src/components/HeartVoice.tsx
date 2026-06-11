@@ -1,11 +1,12 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Mic, Square, Heart, ArrowLeft, Play } from 'lucide-react';
-import { db, storage } from '../lib/firebase';
+import { Mic, Square, Heart, Play } from 'lucide-react';
+import { db } from '../lib/firebase';
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { requestMicrophone, buildAudioBlob, uploadAudio } from '../lib/audioRecorder';
 import { heartbeat } from '../lib/audioUtils';
 import { cn } from '../lib/utils';
+import PageHeader from './ui/PageHeader';
 
 export default function HeartVoice({ currentUser, onBack }: { currentUser: string; onBack: () => void }) {
   const [isRecording, setIsRecording] = useState(false);
@@ -67,14 +68,14 @@ export default function HeartVoice({ currentUser, onBack }: { currentUser: strin
 
   const startRecording = async () => {
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const stream = await requestMicrophone();
       const recorder = new MediaRecorder(stream);
       mediaRecorder.current = recorder;
       setAudioChunks([]);
       
       recorder.ondataavailable = (e) => setAudioChunks(prev => [...prev, e.data]);
       recorder.onstop = async () => {
-        const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+        const audioBlob = buildAudioBlob(audioChunks);
         const url = URL.createObjectURL(audioBlob);
         setAudioUrl(url);
       };
@@ -93,12 +94,8 @@ export default function HeartVoice({ currentUser, onBack }: { currentUser: strin
 
   const sendHeartVoice = async () => {
     if (audioChunks.length === 0) return;
-    const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
-    
-    // In a real app, upload to storage
-    const storageRef = ref(storage, `heartVoices/${Date.now()}.webm`);
-    await uploadBytes(storageRef, audioBlob);
-    const url = await getDownloadURL(storageRef);
+    const audioBlob = buildAudioBlob(audioChunks);
+    const url = await uploadAudio(audioBlob, `heartVoices/${Date.now()}.webm`);
     
     await addDoc(collection(db, 'messages'), {
       senderId: currentUser,
@@ -114,10 +111,8 @@ export default function HeartVoice({ currentUser, onBack }: { currentUser: strin
 
   return (
     <div className="fixed inset-0 z-50 bg-[#2d0a0a] flex flex-col items-center justify-center">
-      <div className="absolute top-0 left-0 w-full p-4 flex justify-between items-center bg-black/20">
-        <button onClick={onBack} className="p-2 bg-white/5 rounded-full"><ArrowLeft className="text-white" /></button>
-        <span className="text-white/60 font-medium">صوت القلب</span>
-        <div className="w-10" />
+      <div className="absolute top-0 left-0 w-full">
+        <PageHeader title="صوت القلب" onBack={onBack} className="bg-black/20" />
       </div>
 
       <canvas ref={canvasRef} width={400} height={400} className="mb-12" />

@@ -3,6 +3,13 @@ import { motion } from 'motion/react';
 import { Gavel, Sparkles } from 'lucide-react';
 import { GoogleGenAI } from "@google/genai";
 
+function sanitizeForPrompt(text: string): string {
+  return text
+    .replace(/[\r\n]+/g, ' ')
+    .replace(/["'`]/g, '')
+    .slice(0, 1000);
+}
+
 export default function PeaceMaker({ apiKey }: { apiKey?: string }) {
   const [prompt, setPrompt] = useState('');
   const [suggestion, setSuggestion] = useState('');
@@ -22,7 +29,7 @@ export default function PeaceMaker({ apiKey }: { apiKey?: string }) {
       const ai = new GoogleGenAI({ apiKey: activeKey });
       const response = await ai.models.generateContent({
         model: "gemini-2.5-flash",
-        contents: `أنت صانع سلام وتعمل حكم بين حبيبين (عباس وفاطمة). اقرأ هذه المشكلة وقدم حلاً كوميدياً ولطيفاً يرضي الطرفين ويصلح الموقف بلكنة عراقية خفيفة: ${prompt}`,
+        contents: `أنت صانع سلام وتعمل حكم بين حبيبين (عباس وفاطمة). اقرأ هذه المشكلة وقدم حلاً كوميدياً ولطيفاً يرضي الطرفين ويصلح الموقف بلكنة عراقية خفيفة: ${sanitizeForPrompt(prompt)}`,
       });
       setSuggestion(response.text || "خالة الأمور بينكم، حاولوا تتفقون على شي بسيط! ❤️");
     } catch (e) {

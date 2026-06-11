@@ -9,6 +9,7 @@ export default function SecretBox({ currentUser, onBack }: { currentUser: string
   const [text, setText] = useState('');
   const [delayDays, setDelayDays] = useState(1);
   const [isSending, setIsSending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const sendSecret = async () => {
     if (!text.trim()) return;
@@ -27,8 +28,10 @@ export default function SecretBox({ currentUser, onBack }: { currentUser: string
         status: 'sent'
       });
       onBack();
-    } catch (error) {
-      console.error(error);
+    } catch (err) {
+      console.error('Failed to send secret message:', err);
+      setError('فشل إرسال الرسالة السرية، حاول مرة ثانية.');
+      setTimeout(() => setError(null), 5000);
       setIsSending(false);
     }
   };
@@ -88,6 +91,9 @@ export default function SecretBox({ currentUser, onBack }: { currentUser: string
           >
             {isSending ? "جاري القفل..." : <><Send className="w-5 h-5" /> تجميد الرسالة</>}
           </button>
+          {error && (
+            <p className="text-red-400 text-sm text-center">{error}</p>
+          )}
         </div>
       </div>
     </div>

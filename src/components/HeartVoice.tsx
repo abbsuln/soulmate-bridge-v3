@@ -10,6 +10,7 @@ import { cn } from '../lib/utils';
 export default function HeartVoice({ currentUser, onBack }: { currentUser: string; onBack: () => void }) {
   const [isRecording, setIsRecording] = useState(false);
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const mediaRecorder = useRef<MediaRecorder | null>(null);
   const [audioChunks, setAudioChunks] = useState<Blob[]>([]);
@@ -82,7 +83,9 @@ export default function HeartVoice({ currentUser, onBack }: { currentUser: strin
       recorder.start();
       setIsRecording(true);
     } catch (err) {
-      console.error(err);
+      console.error('Microphone access failed:', err);
+      setError('تعذّر الوصول للميكروفون — يرجى السماح به من إعدادات المتصفح.');
+      setTimeout(() => setError(null), 5000);
     }
   };
 
@@ -95,21 +98,26 @@ export default function HeartVoice({ currentUser, onBack }: { currentUser: strin
     if (audioChunks.length === 0) return;
     const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
     
-    // In a real app, upload to storage
-    const storageRef = ref(storage, `heartVoices/${Date.now()}.webm`);
-    await uploadBytes(storageRef, audioBlob);
-    const url = await getDownloadURL(storageRef);
-    
-    await addDoc(collection(db, 'messages'), {
-      senderId: currentUser,
-      text: "أحتاجك",
-      audioUrl: url,
-      timestamp: serverTimestamp(),
-      status: 'sent',
-      isHeartVoice: true
-    });
-    
-    onBack();
+    try {
+      const storageRef = ref(storage, `heartVoices/${Date.now()}.webm`);
+      await uploadBytes(storageRef, audioBlob);
+      const url = await getDownloadURL(storageRef);
+      
+      await addDoc(collection(db, 'messages'), {
+        senderId: currentUser,
+        text: "أحتاجك",
+        audioUrl: url,
+        timestamp: serverTimestamp(),
+        status: 'sent',
+        isHeartVoice: true
+      });
+      
+      onBack();
+    } catch (err) {
+      console.error('Failed to send heart voice:', err);
+      setError('فشل إرسال صوت القلب، حاول مرة ثانية.');
+      setTimeout(() => setError(null), 5000);
+    }
   };
 
   return (
@@ -146,6 +154,9 @@ export default function HeartVoice({ currentUser, onBack }: { currentUser: strin
         <p className="text-white/40 text-center max-w-xs leading-relaxed">
           {isRecording ? "دعه يسمع نبضاتك..." : "اضغط مطولاً لتسجيل صوتك في لحظة الاحتياج"}
         </p>
+        {error && (
+          <p className="text-red-400 text-sm text-center max-w-xs">{error}</p>
+        )}
       </div>
     </div>
   );

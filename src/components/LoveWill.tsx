@@ -11,6 +11,7 @@ export default function LoveWill({ currentUser, onBack }: { currentUser: string;
   const [content, setContent] = useState("");
   const [wills, setWills] = useState<any[]>([]);
   const [isFinalizing, setIsFinalizing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [viewingWill, setViewingWill] = useState<any>(null);
   const [readingMode, setReadingMode] = useState(false);
   const [currentLineIndex, setCurrentLineIndex] = useState(-1);
@@ -45,8 +46,10 @@ export default function LoveWill({ currentUser, onBack }: { currentUser: string;
       });
       setContent("");
       setIsFinalizing(false);
-    } catch (error) {
-      console.error(error);
+    } catch (err) {
+      console.error('Failed to save love will:', err);
+      setError('فشل حفظ الوصية، حاول مرة ثانية.');
+      setTimeout(() => setError(null), 5000);
       setIsFinalizing(false);
     }
   };
@@ -124,7 +127,7 @@ export default function LoveWill({ currentUser, onBack }: { currentUser: string;
             </AnimatePresence>
           </div>
 
-          <div className="mt-8 flex justify-center">
+          <div className="mt-8 flex flex-col items-center gap-3">
             <button 
               onClick={saveWill}
               disabled={!content.trim() || isFinalizing}
@@ -133,6 +136,9 @@ export default function LoveWill({ currentUser, onBack }: { currentUser: string;
               <Save className="w-5 h-5" />
               <span>تخليد الوصية</span>
             </button>
+            {error && (
+              <p className="text-red-400 text-sm text-center">{error}</p>
+            )}
           </div>
         </div>
 

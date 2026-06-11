@@ -16,34 +16,38 @@ export default function OurStory({ currentUser, partner, onBack }: { currentUser
 
   useEffect(() => {
     const fetchStats = async () => {
-      const q = query(collection(db, 'messages'), orderBy('timestamp', 'asc'));
-      const snapshot = await getDocs(q);
-      const msgs = snapshot.docs.map(doc => doc.data());
-      
-      if (msgs.length === 0) return;
+      try {
+        const q = query(collection(db, 'messages'), orderBy('timestamp', 'asc'));
+        const snapshot = await getDocs(q);
+        const msgs = snapshot.docs.map(doc => doc.data());
+        
+        if (msgs.length === 0) return;
 
-      const firstMsg = msgs[0];
-      const counts = msgs.reduce((acc: any, m) => {
-        acc[m.senderId] = (acc[m.senderId] || 0) + 1;
-        return acc;
-      }, {});
+        const firstMsg = msgs[0];
+        const counts = msgs.reduce((acc: any, m) => {
+          acc[m.senderId] = (acc[m.senderId] || 0) + 1;
+          return acc;
+        }, {});
 
-      // Find busiest day
-      const days = msgs.reduce((acc: any, m) => {
-        if (!m.timestamp) return acc;
-        const day = format(m.timestamp.toDate(), 'yyyy-MM-dd');
-        acc[day] = (acc[day] || 0) + 1;
-        return acc;
-      }, {});
-      const busiest = Object.entries(days).sort((a: any, b: any) => b[1] - a[1])[0]?.[0] || '';
+        // Find busiest day
+        const days = msgs.reduce((acc: any, m) => {
+          if (!m.timestamp) return acc;
+          const day = format(m.timestamp.toDate(), 'yyyy-MM-dd');
+          acc[day] = (acc[day] || 0) + 1;
+          return acc;
+        }, {});
+        const busiest = Object.entries(days).sort((a: any, b: any) => b[1] - a[1])[0]?.[0] || '';
 
-      setStats({
-        totalMessages: msgs.length,
-        firstDate: firstMsg.timestamp?.toDate() || new Date(),
-        mostUsedEmoji: '❤️', // This would need actual emoji parsing
-        busiestDay: busiest,
-        messageRatio: (counts[currentUser] || 0) / msgs.length
-      });
+        setStats({
+          totalMessages: msgs.length,
+          firstDate: firstMsg.timestamp?.toDate() || new Date(),
+          mostUsedEmoji: '❤️',
+          busiestDay: busiest,
+          messageRatio: (counts[currentUser] || 0) / msgs.length
+        });
+      } catch (err) {
+        console.error('Failed to fetch story stats:', err);
+      }
     };
     fetchStats();
   }, [currentUser]);

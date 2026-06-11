@@ -107,7 +107,9 @@ const VoiceCall = React.forwardRef<VoiceCallHandle, VoiceCallProps>(({ currentUs
         const callRef = doc(db, 'calls', callIdRef.current);
         const snap = await getDoc(callRef);
         if (snap.exists()) await deleteDoc(callRef);
-      } catch {}
+      } catch (e) {
+        console.warn('Failed to clean up Firestore call document:', e);
+      }
     }
 
     callIdRef.current = null;
@@ -164,7 +166,9 @@ const VoiceCall = React.forwardRef<VoiceCallHandle, VoiceCallProps>(({ currentUs
       try {
         const candId = `${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
         await setDoc(doc(db, 'calls', id, localCol, candId), e.candidate.toJSON());
-      } catch {}
+      } catch (err) {
+        console.warn('Failed to send ICE candidate:', err);
+      }
     };
 
     const unsub = onSnapshot(collection(doc(db, 'calls', id), remoteCol), (snap) => {
@@ -172,7 +176,9 @@ const VoiceCall = React.forwardRef<VoiceCallHandle, VoiceCallProps>(({ currentUs
         if (change.type === 'added') {
           try {
             await pc.addIceCandidate(new RTCIceCandidate(change.doc.data()));
-          } catch {}
+          } catch (err) {
+            console.warn('Failed to add remote ICE candidate:', err);
+          }
         }
       });
     });

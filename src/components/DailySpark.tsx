@@ -23,22 +23,27 @@ export default function DailySpark({ currentUser, apiKey }: { currentUser: 'abba
   }, []);
 
   async function fetchDailyQuestion() {
-    const today = new Date().toISOString().split('T')[0];
-    const q = query(collection(db, 'dailyQuestions'), orderBy('date', 'desc'), limit(1));
-    const querySnapshot = await getDocs(q);
-    
-    if (!querySnapshot.empty) {
-      const docSnap = querySnapshot.docs[0];
-      const data = docSnap.data() as DailyQuestion;
-      if (data.date === today) {
-        setQuestion({ ...data, id: docSnap.id });
-        setLoading(false);
-        return;
+    try {
+      const today = new Date().toISOString().split('T')[0];
+      const q = query(collection(db, 'dailyQuestions'), orderBy('date', 'desc'), limit(1));
+      const querySnapshot = await getDocs(q);
+      
+      if (!querySnapshot.empty) {
+        const docSnap = querySnapshot.docs[0];
+        const data = docSnap.data() as DailyQuestion;
+        if (data.date === today) {
+          setQuestion({ ...data, id: docSnap.id });
+          setLoading(false);
+          return;
+        }
       }
+      
+      // Generate new question
+      generateNewQuestion(today);
+    } catch (err) {
+      console.error('Failed to fetch daily question:', err);
+      setLoading(false);
     }
-    
-    // Generate new question
-    generateNewQuestion(today);
   }
 
   async function generateNewQuestion(today: string) {
@@ -64,14 +69,18 @@ export default function DailySpark({ currentUser, apiKey }: { currentUser: 'abba
       });
       setQuestion({ id: docRef.id, question: questionText, date: today, answers: {} });
     } catch (e) {
-      console.error(e);
+      console.error('Failed to generate new question:', e);
       // Fallback
-      const docRef = await addDoc(collection(db, 'dailyQuestions'), {
-        question: "شنو أكثر شي تتذكره من أول لقاء بيناتنا؟",
-        date: today,
-        answers: {}
-      });
-      setQuestion({ id: docRef.id, question: "شنو أكثر شي تتذكره من أول لقاء بيناتنا؟", date: today, answers: {} });
+      try {
+        const docRef = await addDoc(collection(db, 'dailyQuestions'), {
+          question: "شنو أكثر شي تتذكره من أول لقاء بيناتنا؟",
+          date: today,
+          answers: {}
+        });
+        setQuestion({ id: docRef.id, question: "شنو أكثر شي تتذكره من أول لقاء بيناتنا؟", date: today, answers: {} });
+      } catch (fallbackErr) {
+        console.error('Fallback question save also failed:', fallbackErr);
+      }
     }
     setLoading(false);
   }
@@ -79,12 +88,16 @@ export default function DailySpark({ currentUser, apiKey }: { currentUser: 'abba
   async function submitAnswer() {
     if (!question || !answer.trim()) return;
     
-    const docRef = doc(db, 'dailyQuestions', question.id);
-    await updateDoc(docRef, {
-      [`answers.${currentUser}`]: answer
-    });
-    setQuestion({ ...question, answers: { ...question.answers, [currentUser]: answer } });
-    setAnswer('');
+    try {
+      const docRef = doc(db, 'dailyQuestions', question.id);
+      await updateDoc(docRef, {
+        [`answers.${currentUser}`]: answer
+      });
+      setQuestion({ ...question, answers: { ...question.answers, [currentUser]: answer } });
+      setAnswer('');
+    } catch (err) {
+      console.error('Failed to submit daily question answer:', err);
+    }
   }
 
   if (loading) return <div className="text-white/50 p-4">جاري تحميل سؤال اليوم...</div>;

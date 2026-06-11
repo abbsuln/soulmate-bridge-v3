@@ -21,9 +21,14 @@ export default function MoodMemory({ onBack }: { onBack: () => void }) {
       setMessages(msgs);
       
       if (msgs.length > 5) {
-        const moods = msgs.map(m => m.mood);
-        const res = await summarizeMoodWeek(moods);
-        setSummary(res);
+        try {
+          const moods = msgs.map(m => m.mood);
+          const res = await summarizeMoodWeek(moods);
+          setSummary(res);
+        } catch (err) {
+          console.error('Failed to summarize mood week:', err);
+          setSummary("\u062a\u0639\u0630\u0651\u0631 \u062a\u062d\u0644\u064a\u0644 \u0627\u0644\u0645\u0634\u0627\u0639\u0631 \u062d\u0627\u0644\u064a\u0627\u064b.");
+        }
       }
     });
   }, []);

@@ -32,10 +32,10 @@ vi.mock('lucide-react', () => ({
 }));
 
 describe('Login component', () => {
-  let onLogin: ReturnType<typeof vi.fn>;
+  let onLogin: ReturnType<typeof vi.fn<(user: 'abbas' | 'fatima') => void>>;
 
   beforeEach(() => {
-    onLogin = vi.fn();
+    onLogin = vi.fn<(user: 'abbas' | 'fatima') => void>();
     Object.defineProperty(window.navigator, 'vibrate', { value: vi.fn(), writable: true });
   });
 

@@ -33,10 +33,10 @@ vi.mock('firebase/firestore', () => ({
 }));
 
 describe('SecretBox component', () => {
-  let onBack: ReturnType<typeof vi.fn>;
+  let onBack: ReturnType<typeof vi.fn<() => void>>;
 
   beforeEach(() => {
-    onBack = vi.fn();
+    onBack = vi.fn<() => void>();
     mockAddDoc.mockClear();
   });
 

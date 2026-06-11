@@ -250,7 +250,7 @@ const VoiceCall = React.forwardRef<VoiceCallHandle, VoiceCallProps>(({ currentUs
       caller: currentUser,
       target: otherUser,
       type: 'offer',
-      sdp: offer.toJSON(),
+      sdp: { type: offer.type, sdp: offer.sdp },
       status: 'pending',
       timestamp: new Date(),
     });
@@ -285,7 +285,7 @@ const VoiceCall = React.forwardRef<VoiceCallHandle, VoiceCallProps>(({ currentUs
 
     await updateDoc(doc(db, 'calls', id), {
       type: 'answer',
-      sdp: answer.toJSON(),
+      sdp: { type: answer.type, sdp: answer.sdp },
       status: 'connected',
       caller: callSnap.data()?.caller,
     });

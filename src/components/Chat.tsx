@@ -523,6 +523,7 @@ function ChatInner({ currentUser, onLogout, otherUser }: { currentUser: 'abbas' 
   const [painProcessing, setPainProcessing] = useState(false);
   const [painMessages, setPainMessages] = useState<any[]>([]);
   const [currentPainMsgIndex, setCurrentPainMsgIndex] = useState(-1);
+  const painIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const [showNeedsYou, setShowNeedsYou] = useState(false);
 
   // Night mode effects
@@ -898,68 +899,95 @@ function ChatInner({ currentUser, onLogout, otherUser }: { currentUser: 'abbas' 
   const handleSendMessage = async (e?: React.FormEvent) => {
     e?.preventDefault();
     if (!newMessage.trim() && !replyTo) return;
-    
-    // Emergency Pain Detection
-    if (newMessage.trim() && !painProcessing) {
-      const pain = await detectPain(newMessage);
-      if (pain) {
-        setPainProcessing(true);
-        heartbeat.play();
-        const interval = setInterval(() => heartbeat.play(), 1200);
-        
-        // Simulating writing from partner
-        const partnerMsgs = messages.filter(m => m.senderId === partner).slice(-5);
-        setPainMessages(partnerMsgs);
-        setCurrentPainMsgIndex(-1);
-        
-        let idx = 0;
-        const msgInterval = setInterval(() => {
-          if (idx < partnerMsgs.length) {
-            setCurrentPainMsgIndex(idx);
-            idx++;
-          } else {
-            clearInterval(msgInterval);
-          }
-        }, 3000);
 
-        return () => { clearInterval(interval); clearInterval(msgInterval); };
-      }
-    }
-
-    const mood = newMessage.trim() ? await analyzeMood(newMessage) : null;
-    const msg = { 
-      senderId: currentUser, 
-      text: newMessage, 
-      timestamp: serverTimestamp(), 
-      status: 'sent', 
-      replyTo: replyTo ? { id: replyTo.id, text: replyTo.text, senderId: replyTo.senderId } : null,
-      mood: mood
+    const textToSend = newMessage;
+    const replyData = replyTo ? { id: replyTo.id, text: replyTo.text, senderId: replyTo.senderId } : null;
+    const msg = {
+      senderId: currentUser,
+      text: textToSend,
+      timestamp: serverTimestamp(),
+      status: 'sent',
+      replyTo: replyData,
+      mood: null as any
     };
+
+    // Clear UI immediately so user sees instant feedback
     setNewMessage(''); setReplyTo(null);
     setPainProcessing(false);
     setDoc(doc(db, 'users', currentUser), { isTyping: false }, { merge: true });
     playSound('send');
     triggerFloatingEmoji();
-    if (newMessage.toLowerCase().includes('always') || newMessage.includes('دايماً')) {
+    if (textToSend.toLowerCase().includes('always') || textToSend.includes('دايماً')) {
       for(let i=0; i<10; i++) setTimeout(() => triggerFloatingEmoji(), i * 150);
     }
 
-    if (scheduledDelay) {
-      const delay = scheduledDelay;
-      setScheduledDelay(null);
-      setToastMessage(delay < 60000 ? `تم جدولة الرسالة بعد ${delay / 1000} ثانية` : `تم جدولة الرسالة بعد ${delay / 60000} دقيقة`);
-      setTimeout(() => setToastMessage(null), 3000);
-      setTimeout(async () => {
-        await addDoc(collection(db, 'messages'), { ...msg, timestamp: serverTimestamp() });
-        playSound('msg_1');
-      }, delay);
-      return;
-    }
+    // Send message to Firestore immediately (no API blocking)
+    try {
+      if (scheduledDelay) {
+        const delay = scheduledDelay;
+        setScheduledDelay(null);
+        setToastMessage(delay < 60000 ? `تم جدولة الرسالة بعد ${delay / 1000} ثانية` : `تم جدولة الرسالة بعد ${delay / 60000} دقيقة`);
+        setTimeout(() => setToastMessage(null), 3000);
+        setTimeout(async () => {
+          try {
+            await addDoc(collection(db, 'messages'), { ...msg, timestamp: serverTimestamp() });
+            playSound('msg_1');
+          } catch (err) {
+            console.error('Failed to send scheduled message:', err);
+            setToastMessage('فشل إرسال الرسالة المجدولة');
+            setTimeout(() => setToastMessage(null), 3000);
+          }
+        }, delay);
+        return;
+      }
 
-    await addDoc(collection(db, 'messages'), msg);
-    setIsSentFeedback(true);
-    playSound('msg_1');
-    setTimeout(() => setIsSentFeedback(false), 2000);
+      const msgRef = await addDoc(collection(db, 'messages'), msg);
+      setIsSentFeedback(true);
+      playSound('msg_1');
+      setTimeout(() => setIsSentFeedback(false), 2000);
+
+      // Background: analyze mood and update message (non-blocking)
+      if (textToSend.trim()) {
+        analyzeMood(textToSend).then(mood => {
+          if (mood) {
+            updateDoc(doc(db, 'messages', msgRef.id), { mood }).catch(() => {});
+          }
+        }).catch(() => {});
+      }
+
+      // Background: pain detection (non-blocking, message already sent)
+      if (textToSend.trim()) {
+        detectPain(textToSend).then(pain => {
+          if (pain) {
+            setPainProcessing(true);
+            heartbeat.play();
+            // Clear any previous pain interval
+            if (painIntervalRef.current) clearInterval(painIntervalRef.current);
+            painIntervalRef.current = setInterval(() => heartbeat.play(), 1200);
+
+            const partnerMsgs = messagesRef.current.filter(m => m.senderId === partner).slice(-5);
+            setPainMessages(partnerMsgs);
+            setCurrentPainMsgIndex(-1);
+
+            let idx = 0;
+            const msgInterval = setInterval(() => {
+              if (idx < partnerMsgs.length) {
+                setCurrentPainMsgIndex(idx);
+                idx++;
+              } else {
+                clearInterval(msgInterval);
+              }
+            }, 3000);
+          }
+        }).catch(() => {});
+      }
+    } catch (err) {
+      console.error('Failed to send message:', err);
+      setToastMessage('فشل إرسال الرسالة، حاول مرة ثانية');
+      setTimeout(() => setToastMessage(null), 3000);
+      // Restore the message text so user doesn't lose it
+      setNewMessage(textToSend);
+    }
   };
 
   const handleUpdateMood = async (e: React.FormEvent) => {
@@ -1717,6 +1745,7 @@ function ChatInner({ currentUser, onLogout, otherUser }: { currentUser: 'abbas' 
                <button 
                  onClick={async () => {
                    await addDoc(collection(db, 'emergencyAlerts'), { type: 'needs_you', senderId: currentUser, timestamp: serverTimestamp(), isActive: true });
+                   if (painIntervalRef.current) { clearInterval(painIntervalRef.current); painIntervalRef.current = null; }
                    setPainProcessing(false);
                  }}
                  className="mt-12 px-8 py-3 bg-red-600 text-white rounded-full font-bold shadow-[0_0_30px_rgba(220,38,38,0.4)]"

@@ -589,7 +589,7 @@ export default function RelationshipUniverse({currentUser,onClose}:RelationshipU
   },[]);
 
   const updateShared=async(fields:Record<string,unknown>)=>{
-    try{await updateDoc(doc(db,'settings','shared_universe'),fields);}catch{}
+    try{await updateDoc(doc(db,'settings','shared_universe'),fields);}catch(e){console.warn('Failed to update shared universe settings:',e);}
   };
 
   const handleHeartTap=useCallback((e:React.MouseEvent<HTMLDivElement>)=>{

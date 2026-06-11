@@ -26,6 +26,7 @@ export default function PeaceMaker({ apiKey }: { apiKey?: string }) {
       });
       setSuggestion(response.text || "خالة الأمور بينكم، حاولوا تتفقون على شي بسيط! ❤️");
     } catch (e) {
+      console.error('PeaceMaker request failed:', e);
       setSuggestion("صار خلل بذكائي، جرب مرة ثانية! وتأكد من المفتاح.");
     }
     setLoading(false);

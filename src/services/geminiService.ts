@@ -73,6 +73,7 @@ export const summarizeMoodWeek = async (data: { x: number, y: number }[]) => {
 
     return response.text?.trim() || "أسبوع مليء بالنبض.";
   } catch (error) {
+    console.error("Gemini Weekly Summary Error:", error);
     return "أسبوع مليء بالنبض.";
   }
 };

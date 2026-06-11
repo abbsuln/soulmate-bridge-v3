@@ -658,7 +658,9 @@ function ChatInner({ currentUser, onLogout, otherUser }: { currentUser: 'abbas' 
          osc.start(); osc.stop(ctx.currentTime + 0.2);
        }
        else if (type === 'msg_1') { osc.type = 'sine'; osc.frequency.setValueAtTime(600, ctx.currentTime); gain.gain.setValueAtTime(0.2, ctx.currentTime); osc.start(); osc.stop(ctx.currentTime + 0.1); }
-    } catch (e) { }
+    } catch (e) {
+      console.warn('Audio playback failed:', e);
+    }
   };
 
   const triggerNudge = () => {
@@ -734,7 +736,7 @@ function ChatInner({ currentUser, onLogout, otherUser }: { currentUser: 'abbas' 
     const userRef = doc(db, 'users', currentUser);
     
     const updateOnlineStatus = (isOnline: boolean) => {
-      setDoc(userRef, { isOnline, lastSeen: serverTimestamp() }, { merge: true });
+      setDoc(userRef, { isOnline, lastSeen: serverTimestamp() }, { merge: true }).catch(e => console.warn('Failed to update online status:', e));
     };
 
     updateOnlineStatus(true);
@@ -859,26 +861,46 @@ function ChatInner({ currentUser, onLogout, otherUser }: { currentUser: 'abbas' 
   }, []);
 
   const handleStartCall = async (type: 'video' | 'audio') => {
-    if (type === 'audio') {
-      voiceCallRef.current?.startCall();
-      return;
+    try {
+      if (type === 'audio') {
+        voiceCallRef.current?.startCall();
+        return;
+      }
+      const roomId = `room_${Math.random().toString(36).substring(2, 15)}`;
+      await setDoc(doc(db, 'settings', 'activeCall'), { status: 'ringing', caller: currentUser, callType: type, roomId });
+    } catch (err) {
+      console.error('Failed to start call:', err);
+      setToastMessage('فشل بدء المكالمة');
+      setTimeout(() => setToastMessage(null), 3000);
     }
-    const roomId = `room_${Math.random().toString(36).substring(2, 15)}`;
-    await setDoc(doc(db, 'settings', 'activeCall'), { status: 'ringing', caller: currentUser, callType: type, roomId });
   };
 
   const handleAcceptCall = async () => {
-    await updateDoc(doc(db, 'settings', 'activeCall'), { status: 'connected' });
+    try {
+      await updateDoc(doc(db, 'settings', 'activeCall'), { status: 'connected' });
+    } catch (err) {
+      console.error('Failed to accept call:', err);
+    }
   };
 
   const handleEndCall = async () => {
-    await deleteDoc(doc(db, 'settings', 'activeCall'));
+    try {
+      await deleteDoc(doc(db, 'settings', 'activeCall'));
+    } catch (err) {
+      console.error('Failed to end call:', err);
+    }
   };
 
   const handleSendNudge = async () => {
-    await addDoc(collection(db, 'messages'), { senderId: currentUser, text: '✨ تنبيه!', isNudge: true, timestamp: serverTimestamp(), status: 'sent' });
-    setToastMessage('تم إرسال التنبيه!');
-    setTimeout(() => setToastMessage(null), 2000);
+    try {
+      await addDoc(collection(db, 'messages'), { senderId: currentUser, text: '✨ تنبيه!', isNudge: true, timestamp: serverTimestamp(), status: 'sent' });
+      setToastMessage('تم إرسال التنبيه!');
+      setTimeout(() => setToastMessage(null), 2000);
+    } catch (err) {
+      console.error('Failed to send nudge:', err);
+      setToastMessage('فشل إرسال التنبيه');
+      setTimeout(() => setToastMessage(null), 3000);
+    }
   };
    
   const handleSurprise = async () => {
@@ -889,10 +911,16 @@ function ChatInner({ currentUser, onLogout, otherUser }: { currentUser: 'abbas' 
         "احبج بگد رحمة الله.. وبگد الهوة اللي يتنفسه العراقيين 🇮🇶❤️",
         "إنتِ السند، وإنتِ الورد، وإنتِ روحي 🌹"
     ];
-    const text = messagesList[Math.floor(Math.random() * messagesList.length)];
-    await addDoc(collection(db, 'messages'), { senderId: currentUser, text, isSurprise: true, timestamp: serverTimestamp(), status: 'sent' });
-    triggerFloatingEmoji('🎉');
-    if (window.navigator.vibrate) window.navigator.vibrate([50, 100, 50]);
+    try {
+      const text = messagesList[Math.floor(Math.random() * messagesList.length)];
+      await addDoc(collection(db, 'messages'), { senderId: currentUser, text, isSurprise: true, timestamp: serverTimestamp(), status: 'sent' });
+      triggerFloatingEmoji('🎉');
+      if (window.navigator.vibrate) window.navigator.vibrate([50, 100, 50]);
+    } catch (err) {
+      console.error('Failed to send surprise:', err);
+      setToastMessage('فشل إرسال المفاجأة');
+      setTimeout(() => setToastMessage(null), 3000);
+    }
   };
 
   const handleSendMessage = async (e?: React.FormEvent) => {
@@ -950,16 +978,26 @@ function ChatInner({ currentUser, onLogout, otherUser }: { currentUser: 'abbas' 
       setToastMessage(delay < 60000 ? `تم جدولة الرسالة بعد ${delay / 1000} ثانية` : `تم جدولة الرسالة بعد ${delay / 60000} دقيقة`);
       setTimeout(() => setToastMessage(null), 3000);
       setTimeout(async () => {
-        await addDoc(collection(db, 'messages'), { ...msg, timestamp: serverTimestamp() });
-        playSound('msg_1');
+        try {
+          await addDoc(collection(db, 'messages'), { ...msg, timestamp: serverTimestamp() });
+          playSound('msg_1');
+        } catch (err) {
+          console.error('Failed to send scheduled message:', err);
+        }
       }, delay);
       return;
     }
 
-    await addDoc(collection(db, 'messages'), msg);
-    setIsSentFeedback(true);
-    playSound('msg_1');
-    setTimeout(() => setIsSentFeedback(false), 2000);
+    try {
+      await addDoc(collection(db, 'messages'), msg);
+      setIsSentFeedback(true);
+      playSound('msg_1');
+      setTimeout(() => setIsSentFeedback(false), 2000);
+    } catch (err) {
+      console.error('Failed to send message:', err);
+      setToastMessage('فشل إرسال الرسالة، حاول مرة ثانية.');
+      setTimeout(() => setToastMessage(null), 4000);
+    }
   };
 
   const handleUpdateMood = async (e: React.FormEvent) => {
@@ -984,7 +1022,11 @@ function ChatInner({ currentUser, onLogout, otherUser }: { currentUser: 'abbas' 
       if (newReactions[userReactionIndex].emoji === emoji) newReactions.splice(userReactionIndex, 1);
       else newReactions[userReactionIndex] = { emoji, user: currentUser as any };
     } else newReactions.push({ emoji, user: currentUser as any });
-    await updateDoc(doc(db, 'messages', messageId), { reactions: newReactions });
+    try {
+      await updateDoc(doc(db, 'messages', messageId), { reactions: newReactions });
+    } catch (err) {
+      console.error('Failed to update reaction:', err);
+    }
   }, [currentUser]);
 
   const handleDeleteMessage = useCallback(async (msg: Message) => {
@@ -992,7 +1034,9 @@ function ChatInner({ currentUser, onLogout, otherUser }: { currentUser: 'abbas' 
     try {
       await updateDoc(doc(db, 'messages', msg.id), { text: null, deleted: true, imageUrl: null, imageUrls: null, audioUrl: null });
     } catch(e) {
-      console.error(e);
+      console.error('Failed to delete message:', e);
+      setToastMessage('فشل حذف الرسالة');
+      setTimeout(() => setToastMessage(null), 3000);
     }
   }, [currentUser]);
 

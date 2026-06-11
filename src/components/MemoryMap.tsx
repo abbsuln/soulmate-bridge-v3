@@ -8,6 +8,7 @@ export default function MemoryMap({ onBack }: { onBack: () => void }) {
   const [pins, setPins] = useState<any[]>([]);
   const [showAdd, setShowAdd] = useState(false);
   const [newPin, setNewPin] = useState({ title: '', lat: '33.3152', lng: '44.3661' }); // Default Baghdad
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     const q = query(collection(db, 'memoryPins'));
@@ -18,16 +19,28 @@ export default function MemoryMap({ onBack }: { onBack: () => void }) {
 
   const addPin = async () => {
     if (!newPin.title) return;
-    await addDoc(collection(db, 'memoryPins'), {
-      ...newPin,
-      createdAt: serverTimestamp()
-    });
-    setShowAdd(false);
-    setNewPin({ title: '', lat: '33.3152', lng: '44.3661' });
+    try {
+      await addDoc(collection(db, 'memoryPins'), {
+        ...newPin,
+        createdAt: serverTimestamp()
+      });
+      setShowAdd(false);
+      setNewPin({ title: '', lat: '33.3152', lng: '44.3661' });
+    } catch (err) {
+      console.error('Failed to add memory pin:', err);
+      setError('فشل إضافة المكان، حاول مرة ثانية.');
+      setTimeout(() => setError(null), 5000);
+    }
   };
 
   const deletePin = async (id: string) => {
-    await deleteDoc(doc(db, 'memoryPins', id));
+    try {
+      await deleteDoc(doc(db, 'memoryPins', id));
+    } catch (err) {
+      console.error('Failed to delete memory pin:', err);
+      setError('فشل حذف المكان، حاول مرة ثانية.');
+      setTimeout(() => setError(null), 5000);
+    }
   };
 
   return (
@@ -37,6 +50,12 @@ export default function MemoryMap({ onBack }: { onBack: () => void }) {
         <h2 className="text-lg font-bold">خريطة ذكرياتنا 📍</h2>
         <button onClick={() => setShowAdd(true)} className="p-2 bg-rose-500 rounded-full"><Plus size={20} /></button>
       </div>
+
+      {error && (
+        <div className="px-4 py-2 bg-red-500/20 border-b border-red-500/30">
+          <p className="text-red-400 text-sm text-center">{error}</p>
+        </div>
+      )}
 
       <div className="flex-1 relative">
         <iframe 

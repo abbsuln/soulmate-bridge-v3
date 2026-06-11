@@ -2,6 +2,17 @@ import { GoogleGenAI, Type } from "@google/genai";
 
 export const getGeminiApiKey = () => localStorage.getItem('geminiApiKey') || "";
 
+/**
+ * Sanitizes user input before embedding in AI prompts to mitigate prompt injection.
+ * Strips characters commonly used for prompt manipulation.
+ */
+function sanitizeForPrompt(text: string): string {
+  return text
+    .replace(/[\r\n]+/g, ' ')
+    .replace(/["'`]/g, '')
+    .slice(0, 1000);
+}
+
 export const analyzeMood = async (text: string) => {
   const apiKey = getGeminiApiKey();
   if (!apiKey) return null;
@@ -10,7 +21,7 @@ export const analyzeMood = async (text: string) => {
     const ai = new GoogleGenAI({ apiKey });
     const response = await ai.models.generateContent({
       model: "gemini-2.0-flash",
-      contents: `Analyze the mood of this Arabic/English text: "${text}". 
+      contents: `Analyze the mood of this Arabic/English text: "${sanitizeForPrompt(text)}". 
       Return a JSON object with two values between -1 and 1:
       x: Happy (1) vs Sad (-1)
       y: Calm (-1) vs Excited/Anxious (1)
@@ -44,7 +55,7 @@ export const detectPain = async (text: string) => {
     const response = await ai.models.generateContent({
       model: "gemini-2.0-flash",
       contents: `Determine if this message expresses deep emotional pain, exhaustion, or a cry for help (e.g. "تعبت", "أنا منتهي", "أحتاج أحد"). 
-      Text: "${text}"
+      Text: "${sanitizeForPrompt(text)}"
       Return "true" only if it's a serious emotional distress, otherwise "false".
       Only return the boolean string.`,
     });

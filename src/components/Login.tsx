@@ -7,11 +7,11 @@ export default function Login({ onLogin }: { onLogin: (user: 'abbas' | 'fatima')
   const [error, setError] = useState(false);
   const [selectedUser, setSelectedUser] = useState<'abbas' | 'fatima' | null>(null);
   const [showPass, setShowPass] = useState(false);
-  const SECRET = "always";
 
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
-    if (passcode.toLowerCase() === SECRET && selectedUser) {
+    const secret = (import.meta.env.VITE_APP_PASSCODE || '').toLowerCase();
+    if (secret && passcode.toLowerCase() === secret && selectedUser) {
       onLogin(selectedUser);
     } else {
       setError(true);

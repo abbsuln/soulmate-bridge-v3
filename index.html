@@ -26,6 +26,18 @@
         });
       }
     </script>
+    <script>
+      // Pass Firebase config to the messaging service worker (avoids hardcoding keys in SW)
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.ready.then((registration) => {
+          fetch('/firebase-applet-config.json').then(r => r.ok ? r.json() : null).then(config => {
+            if (config && registration.active) {
+              registration.active.postMessage({ type: 'FIREBASE_CONFIG', config });
+            }
+          }).catch(() => {});
+        });
+      }
+    </script>
   </body>
 </html>
 

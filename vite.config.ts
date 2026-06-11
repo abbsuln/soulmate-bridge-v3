@@ -28,7 +28,11 @@ export default defineConfig(({mode}) => {
     },
     test: {
       globals: true,
-      environment: 'node',
+      environment: 'jsdom',
+      coverage: {
+        include: ['src/**/*.{ts,tsx}'],
+        exclude: ['src/main.tsx', 'src/index.css'],
+      },
     },
   };
 });

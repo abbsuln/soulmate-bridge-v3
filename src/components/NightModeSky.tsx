@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Music, Pause, Play, Star, Volume2 } from 'lucide-react';
 import { cn } from '../lib/utils';
+import { vibrate } from '../lib/haptics';
 
 interface NightModeSkyProps {
   weather: 'rain' | 'clear' | 'clouds';
@@ -443,7 +444,7 @@ export default function NightModeSky({
           whileTap={{ scale: 0.65 }}
           onClick={() => {
             onOurStarClick();
-            if (window.navigator.vibrate) window.navigator.vibrate([20, 15, 30]);
+            vibrate([20, 15, 30]);
           }}
           className="relative z-10 w-8 h-8 flex items-center justify-center focus:outline-none"
         >

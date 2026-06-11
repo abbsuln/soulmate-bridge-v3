@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Clock, Send, Lock, ArrowLeft, Sparkles } from 'lucide-react';
+import { Clock, Send, Lock, Sparkles } from 'lucide-react';
+import PageHeader from './ui/PageHeader';
 import { db } from '../lib/firebase';
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
 import { cn } from '../lib/utils';
@@ -35,11 +36,7 @@ export default function SecretBox({ currentUser, onBack }: { currentUser: string
 
   return (
     <div className="fixed inset-0 z-[100] bg-[#0c0c0c] flex flex-col font-sans">
-      <div className="p-4 border-b border-white/5 flex items-center justify-between bg-black/40">
-        <button onClick={onBack} className="p-2 bg-white/5 rounded-full"><ArrowLeft /></button>
-        <h2 className="text-lg font-bold flex items-center gap-2">صندوق الأسرار ⏰</h2>
-        <div className="w-10" />
-      </div>
+      <PageHeader title="صندوق الأسرار ⏰" onBack={onBack} />
 
       <div className="flex-1 p-8 flex flex-col items-center justify-center space-y-12">
         <motion.div 

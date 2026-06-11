@@ -9,7 +9,7 @@ import {
   doc, getDoc, setDoc, onSnapshot, collection, query, orderBy, updateDoc
 } from 'firebase/firestore';
 import { db } from '../lib/firebase';
-import { GoogleGenAI } from '@google/genai';
+import { createGeminiClient } from '../lib/gemini';
 import { computeEmotionalState, type EmotionalState } from '../lib/emotionalEngine';
 import { computeSeasonalState, type SeasonalState } from '../lib/seasonalEngine';
 
@@ -610,13 +610,12 @@ export default function RelationshipUniverse({currentUser,onClose}:RelationshipU
   },[timeTravelDate,messages]);
 
   const generateAIStory=useCallback(async()=>{
-    const apiKey=localStorage.getItem('geminiApiKey');
-    if(!apiKey){alert('الرجاء إضافة مفتاح Gemini API.');return;}
+    const client=createGeminiClient();
+    if(!client){alert('الرجاء إضافة مفتاح Gemini API.');return;}
     setIsGeneratingStory(true);setGeneratedStory('');
     const ctx=messages.slice(-40).map(m=>`${m.senderId==='abbas'?'عباس':'فاطمة'}: ${m.text}`).join('\n');
     try{
-      const ai=new GoogleGenAI({apiKey});
-      const res=await ai.models.generateContent({model:'gemini-2.0-flash',contents:`اكتب بالعربية الفصحى الراقية قصة شعرية ملحمية عن حب عباس وفاطمة. السياق:\n${ctx}\n\nعدد الرسائل: ${universeStats.totalMessages}، الأيام: ${universeStats.daysCount}، المزاج الحالي: ${emotion.label}.`,config:{temperature:0.88}});
+      const res=await client.models.generateContent({model:'gemini-2.0-flash',contents:`اكتب بالعربية الفصحى الراقية قصة شعرية ملحمية عن حب عباس وفاطمة. السياق:\n${ctx}\n\nعدد الرسائل: ${universeStats.totalMessages}، الأيام: ${universeStats.daysCount}، المزاج الحالي: ${emotion.label}.`,config:{temperature:0.88}});
       setGeneratedStory(res.text||'لم نتمكن من نسج الحكاية.');
     }catch{setGeneratedStory('خطأ في الاتصال بـ Gemini.');}
     finally{setIsGeneratingStory(false);}

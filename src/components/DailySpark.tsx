@@ -4,7 +4,7 @@ import { collection, addDoc, query, orderBy, limit, getDocs, updateDoc, doc, ser
 import { db } from '../lib/firebase';
 import { cn } from '../lib/utils';
 import { Sparkles, Send } from 'lucide-react';
-import { GoogleGenAI, Type } from "@google/genai";
+import { createGeminiClient } from '../lib/gemini';
 
 interface DailyQuestion {
   id: string;
@@ -43,12 +43,10 @@ export default function DailySpark({ currentUser, apiKey }: { currentUser: 'abba
 
   async function generateNewQuestion(today: string) {
     try {
-      const activeKey = apiKey || (import.meta as any).env.VITE_GEMINI_API_KEY || '';
       let questionText = "شنو أكثر شي تتذكره من أول لقاء بيناتنا؟"; // Fallback static question
-      
-      if (activeKey) {
-          const ai = new GoogleGenAI({ apiKey: activeKey });
-          const response = await ai.models.generateContent({
+      const client = createGeminiClient(apiKey);
+      if (client) {
+          const response = await client.models.generateContent({
             model: "gemini-2.5-flash",
             contents: "قم بإنشاء سؤال رومانسي واحد أو سؤال ممتع أو عميق ومثير للتفكير ليجيب عليه شريكان (عراقيان، عباس وفاطمة) معاً. اجعل السؤال بلهجة عراقية خفيفة ولطيفة، واكتب السؤال فقط بدون أي إضافات.",
           });

@@ -1,8 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion } from 'motion/react';
-import { Sparkles, ArrowLeft, Target, TrendingUp, Heart } from 'lucide-react';
+import { Sparkles, Target, TrendingUp, Heart } from 'lucide-react';
+import PageHeader from './ui/PageHeader';
 import { db } from '../lib/firebase';
 import { collection, query, orderBy, onSnapshot, limit } from 'firebase/firestore';
+import { mapDocs } from '../lib/firestore-helpers';
 import { summarizeMoodWeek } from '../services/geminiService';
 
 export default function MoodMemory({ onBack }: { onBack: () => void }) {
@@ -106,11 +108,7 @@ export default function MoodMemory({ onBack }: { onBack: () => void }) {
 
   return (
     <div className="fixed inset-0 z-50 bg-[#0a0a0a] flex flex-col overflow-hidden">
-      <div className="p-4 flex items-center justify-between border-b border-white/5 bg-black/40">
-        <button onClick={onBack} className="p-2 bg-white/5 rounded-full"><ArrowLeft className="text-white" /></button>
-        <h2 className="text-white font-medium">ذاكرة المشاعر</h2>
-        <Sparkles className="text-yellow-400 w-5 h-5" />
-      </div>
+      <PageHeader title="ذاكرة المشاعر" onBack={onBack} rightElement={<Sparkles className="text-yellow-400 w-5 h-5" />} />
 
       <div className="flex-1 overflow-y-auto p-6 flex flex-col space-y-12 pb-24">
         <div className="relative bg-white/5 border border-white/10 rounded-3xl p-4 overflow-hidden">

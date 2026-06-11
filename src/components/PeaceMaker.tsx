@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { motion } from 'motion/react';
 import { Gavel, Sparkles } from 'lucide-react';
-import { GoogleGenAI } from "@google/genai";
+import { createGeminiClient } from '../lib/gemini';
 
 export default function PeaceMaker({ apiKey }: { apiKey?: string }) {
   const [prompt, setPrompt] = useState('');
@@ -13,14 +13,13 @@ export default function PeaceMaker({ apiKey }: { apiKey?: string }) {
     setLoading(true);
     
     try {
-      const activeKey = apiKey || (import.meta as any).env.VITE_GEMINI_API_KEY || '';
-      if (!activeKey) {
+      const client = createGeminiClient(apiKey);
+      if (!client) {
          setSuggestion("يرجى إدخال مفتاح صانع السلام في الإعدادات أولاً!");
          setLoading(false);
          return;
       }
-      const ai = new GoogleGenAI({ apiKey: activeKey });
-      const response = await ai.models.generateContent({
+      const response = await client.models.generateContent({
         model: "gemini-2.5-flash",
         contents: `أنت صانع سلام وتعمل حكم بين حبيبين (عباس وفاطمة). اقرأ هذه المشكلة وقدم حلاً كوميدياً ولطيفاً يرضي الطرفين ويصلح الموقف بلكنة عراقية خفيفة: ${prompt}`,
       });

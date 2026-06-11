@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Heart, Lock, Eye, EyeOff } from 'lucide-react';
+import { vibrate } from '../lib/haptics';
 
 export default function Login({ onLogin }: { onLogin: (user: 'abbas' | 'fatima') => void }) {
   const [passcode, setPasscode] = useState('');
@@ -15,7 +16,7 @@ export default function Login({ onLogin }: { onLogin: (user: 'abbas' | 'fatima')
       onLogin(selectedUser);
     } else {
       setError(true);
-      if (window.navigator.vibrate) window.navigator.vibrate([80, 40, 80]);
+      vibrate([80, 40, 80]);
       setTimeout(() => setError(false), 2000);
     }
   };

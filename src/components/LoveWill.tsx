@@ -1,8 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { PenSquare, Save, Heart, Sparkles, ArrowLeft, Clock } from 'lucide-react';
+import { PenSquare, Save, Heart, Sparkles, Clock } from 'lucide-react';
+import PageHeader from './ui/PageHeader';
 import { db } from '../lib/firebase';
 import { collection, addDoc, query, where, orderBy, onSnapshot, serverTimestamp } from 'firebase/firestore';
+import { mapDocs } from '../lib/firestore-helpers';
 import { pen } from '../lib/audioUtils';
 import { format, differenceInDays } from 'date-fns';
 import { cn } from '../lib/utils';
@@ -21,7 +23,7 @@ export default function LoveWill({ currentUser, onBack }: { currentUser: string;
       orderBy('createdAt', 'desc')
     );
     return onSnapshot(q, (snapshot) => {
-      setWills(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+      setWills(mapDocs(snapshot));
     });
   }, []);
 
@@ -86,13 +88,7 @@ export default function LoveWill({ currentUser, onBack }: { currentUser: string;
       exit={{ opacity: 0 }}
       className="fixed inset-0 z-50 bg-[#121212] flex flex-col overflow-hidden"
     >
-      <div className="p-4 flex items-center justify-between border-b border-white/5 bg-black/20">
-        <button onClick={onBack} className="w-10 h-10 flex items-center justify-center rounded-full bg-white/5 hover:bg-white/10 transition-colors">
-          <ArrowLeft className="w-5 h-5 text-white/70" />
-        </button>
-        <h2 className="text-lg font-medium text-white/90">وصية الحب</h2>
-        <div className="w-10" />
-      </div>
+      <PageHeader title="وصية الحب" onBack={onBack} className="bg-black/20" />
 
       <div className="flex-1 overflow-y-auto p-6 space-y-8 pb-24">
         {/* Editor Area */}
